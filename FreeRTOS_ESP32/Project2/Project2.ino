@@ -12,9 +12,15 @@
 #define BMP_CS     5
 
 SemaphoreHandle_t xBinarySemaphore;
-SemaphoreHandle_t xQueueBUTTON_STATE;
-SemaphoreHandle_t xQueueTemp;
 SemaphoreHandle_t xMutex;
+
+QueueHandle_t xQueueBUTTON_STATE;
+QueueHandle_t xQueueTemp;
+
+TaskHandle_t xHandle1;
+TaskHandle_t xHandle2;
+TaskHandle_t xHandle3;
+
 
 void taskButton(void *params);
 void taskChooseMode(void *params);
@@ -23,9 +29,7 @@ void taskManualMode(void *params);
 
 static int BUTTON_STATE;
 
-TaskHandle_t xHandle1;
-TaskHandle_t xHandle2;
-TaskHandle_t xHandle3;
+
 
 //Setup for BMP280,LCD-I2C
 Adafruit_BMP280 bmp(BMP_CS, BMP_SCK, BMP_MISO, BMP_MOSI); // Khai báo đối tượng bmp với giao tiếp SPI
@@ -36,6 +40,7 @@ LiquidCrystal_I2C lcd(0x27, lcdColumns, lcdRows);
 
 void setup() {
   Serial.begin(115200);
+
   pinMode(BTN_MODE, INPUT);
   pinMode(PUMP, OUTPUT);
   pinMode(BTN_PUMP,INPUT);
@@ -52,26 +57,27 @@ void setup() {
                   Adafruit_BMP280::FILTER_X16,      /* Bộ lọc. */
                   Adafruit_BMP280::STANDBY_MS_500); /* Thời gian chờ. */
 
- // Khởi tạo màn hình LCD
-  lcd.init();
-  // Bật đèn nền màn hình LCD
-  lcd.backlight();
 
+  lcd.init();
+  lcd.backlight();
+  //Create Queue
   xQueueTemp=xQueueCreate(1, sizeof(float));
   xQueueBUTTON_STATE = xQueueCreate(1, sizeof(int));
+  //Create Binary Semaphore and Mutex
   xBinarySemaphore = xSemaphoreCreateBinary();
-  
-  
-  xTaskCreatePinnedToCore(readSensor, "readSensor", 10000, NULL, 3, &xHandle3, 0);
+  xMutex = xSemaphoreCreateMutex();  
+
+  //Create task
+  xTaskCreatePinnedToCore(readSensor, "readSensor", 10000, NULL, 3, &xHandle3, 1);
   xTaskCreatePinnedToCore(taskButton, "taskButton", 12288, NULL, 2, NULL, 1);
   xTaskCreatePinnedToCore(taskChooseMode, "taskChooseMode", 12288, NULL, 3, NULL, 1);
-  
 }
 
 void loop() {
   vTaskDelete(NULL);
 }
 
+//BMP280 and LCD
 void readSensor(void *params){
  float temperature;
  float pressure;
@@ -83,56 +89,43 @@ void readSensor(void *params){
     Serial.print(temperature);
     Serial.println(" *C");
 
-    Serial.print(F("Pressure = "));
-    pressure = bmp.readPressure() / 100.0F; // Đọc áp suất và chuyển đổi sang hPa
-    Serial.print(pressure);
-    Serial.println(" hPa");
-
     xSemaphoreGive(xMutex);
     xQueueSendToBack(xQueueTemp,&temperature,0);
     
-
-    // Hiển thị nhiệt độ lên LCD
-    lcd.setCursor(0, 1); // Di chuyển con trỏ đến hàng 1, cột 1
+    lcd.setCursor(0, 1); 
     lcd.print("Nhiet do: ");
     lcd.print(temperature);
     lcd.print(" *C");
 
-    delay(1000);
-    taskYIELD();
+    vTaskDelay(1000);
   }
 }
 
 void taskButton(void *params) {
   xSemaphoreTake(xBinarySemaphore,portMAX_DELAY);
   xTaskCreatePinnedToCore(taskAutoMode, "taskAutoMode", 10000, NULL, 5, &xHandle1, 1);
-  while(1) {
+  while(1) {  
     if (digitalRead(BTN_MODE) == HIGH) {
-      BUTTON_STATE = !BUTTON_STATE;
+      BUTTON_STATE = !BUTTON_STATE;//0->1,1->0;
       xQueueOverwrite(xQueueBUTTON_STATE, &BUTTON_STATE);
-      delay(100);
     }
   }
   xSemaphoreGive(xBinarySemaphore);
-  vTaskDelay(10);
-
+  vTaskDelay(100);
 }
 
 void taskChooseMode(void *params) {
   static int temp;
-  xQueueReceive(xQueueBUTTON_STATE, &temp, portMAX_DELAY);
-  
-
   while (1) {  
+    xQueueReceive(xQueueBUTTON_STATE, &temp, portMAX_DELAY);
     Serial.print(temp);
     if (temp == 0) {
       Serial.println("AUTO");
       vTaskDelete(xHandle2);
       xTaskCreatePinnedToCore(taskAutoMode, "taskAutoMode", 10000, NULL, 3, &xHandle1, 1);
-    }
-        
-      
-     else { 
+    }     
+    else { 
+      Serial.println("MANUAL");
       vTaskDelete(xHandle1);
       xTaskCreatePinnedToCore(taskManualMode, "taskManualMode", 10000, NULL, 3, &xHandle2, 1);
       Serial.println("MANUAL");
@@ -147,8 +140,7 @@ void taskAutoMode(void *params) {
   float buff;
   lcd.clear();
 
-  while(1){
-      
+  while(1){  
       xQueueReceive(xQueueTemp,&buff,portMAX_DELAY);
       Serial.println("In AUTO Mode");
       if(buff>=32){
@@ -157,12 +149,16 @@ void taskAutoMode(void *params) {
       else{
         xTaskCreatePinnedToCore(taskPumpOff,"TurnOff",4896,NULL,4,NULL,0);
       }
-      lcd.setCursor(2, 0); // Di chuyển con trỏ đến hàng 1, cột 1
+      lcd.setCursor(2, 0); 
       lcd.print("MODE : AUTO ");
+      lcd.setCursor(0, 1); 
+      lcd.print("Nhiet do: ");
+      lcd.print(buff);
+      lcd.print(" *C");
+
 
       xSemaphoreGive(xMutex);
-      delay(4000);
-      taskYIELD();
+      vTaskDelay(400);    
   }
 }
 
@@ -172,14 +168,13 @@ void taskManualMode(void *params){
   delay(1000);
   while(1) {
     if (digitalRead(BTN_PUMP) == HIGH) {
-      PUMP_STATE = !PUMP_STATE;
-      
+      PUMP_STATE = !PUMP_STATE;    
     }
     if(PUMP_STATE==0){
       xTaskCreatePinnedToCore(taskPumpOff,"TurnOff",4896,NULL,4,NULL,0);
-      lcd.setCursor(2, 0); // Di chuyển con trỏ đến hàng 1, cột 1
+      lcd.setCursor(2, 0);
       lcd.print("MODE : MANUAL ");
-      lcd.setCursor(2, 1); // Di chuyển con trỏ đến hàng 1, cột 1
+      lcd.setCursor(2, 1); 
       lcd.print("PUMP : ON ");
     }
     else{
@@ -189,7 +184,7 @@ void taskManualMode(void *params){
       lcd.setCursor(2, 1); // Di chuyển con trỏ đến hàng 1, cột 1
       lcd.print("PUMP : OFF ");
     }
-    
+    vTaskDelay(400); 
   }
 }
 
