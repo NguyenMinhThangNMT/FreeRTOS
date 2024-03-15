@@ -119,7 +119,7 @@ void TaskButton(void *param) {
     }
     Serial.println(BUTTON_STATE);
     xSemaphoreGive(BinarySemaphore);
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
 
@@ -175,7 +175,7 @@ void TaskAutoMode(void *params) {
       lcd.print(" *C");
 
       xSemaphoreGive(Mutex);
-      vTaskDelay(400);    
+      vTaskDelay(4000);    
   }
 }
 
