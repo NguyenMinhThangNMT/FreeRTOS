@@ -19,9 +19,9 @@ TaskHandle_t xHandle2 = NULL; // Task handle for TaskManualMode
 TaskHandle_t xHandle3 = NULL; // Task handle for readSensor
 
 // Variable
-bool BUTTON_STATE = false; // Initialize to a known state
+bool BUTTON_STATE = false; 
 bool PUMP_STATE = false;
-bool temp; // Change to bool to match queue data type
+bool temp; 
 
 DHT dht(DHTPIN, DHTTYPE);
 
