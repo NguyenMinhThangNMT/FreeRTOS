@@ -125,7 +125,7 @@ void TaskAutoMode(void *param) {
                 }
             }
         }
-        vTaskDelay(pdMS_TO_TICKS(1000)); // Delay for demonstration
+        vTaskDelay(pdMS_TO_TICKS(1000)); 
     }
 }
 
@@ -136,7 +136,7 @@ void TaskManualMode(void *param) {
         if (digitalRead(BTNPUMP) == HIGH) {
             pumpState = !pumpState;
             digitalWrite(PUMP, pumpState ? HIGH : LOW);
-            vTaskDelay(pdMS_TO_TICKS(1000)); // Debounce delay
+            vTaskDelay(pdMS_TO_TICKS(1000)); 
         }
     }
 }
