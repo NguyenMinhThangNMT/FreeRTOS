@@ -62,7 +62,7 @@ void setup() {
 }
 
 void loop() {
-    // Empty loop since FreeRTOS tasks are used
+   
 }
 
 void TaskChooseMode(void *params) {
